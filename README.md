@@ -11,13 +11,13 @@
   </p>
 </div>
 
-Deterministic, production-tested Python 3.11+, SQL, and V8 Google Apps Script reference architectures for **Hybrid RAG Diagnostics (`BM25 + Dense Vector RRF`)**, **FastAPI + OpenAI Strict `json_schema` Pipelines**, **Bounded Stream Backpressure**, **Supabase `aal2` MFA Row-Level Security (`pgTAP`)**, and **ERP / Workspace Sync Engines**.
+Reference implementations in Python 3.11+, SQL, and V8 Google Apps Script reference architectures for **Hybrid RAG Diagnostics (`BM25 + Dense Vector RRF`)**, **FastAPI + OpenAI Strict `json_schema` Pipelines**, **Bounded Stream Backpressure**, **Supabase `aal2` MFA Row-Level Security (`pgTAP`)**, and **ERP / Workspace Sync Engines**.
 
 ---
 
 ## 1. Included Open-Source Engineering Modules
 
-| Module | Source File | Production Problem Solved |
+| Module | Source File | Problem it addresses |
 | :--- | :--- | :--- |
 | **1. Hybrid RAG Pipeline Auditor (`BM25 + Dense RRF`)** | [`src/rag_hybrid_rerank_auditor.py`](./src/rag_hybrid_rerank_auditor.py) | Diagnoses chunk-boundary fragmentation and benchmarks pure dense cosine search against **Hybrid BM25 + Vector Reciprocal Rank Fusion (`RRF, k=60`)** with similarity cutoff guards to eliminate hallucinations. |
 | **2. FastAPI + OpenAI Structured Outputs Service** | [`src/fastapi_openai_structured_rag_service.py`](./src/fastapi_openai_structured_rag_service.py) | Enforces 100% deterministic JSON schema responses (`strict: true`), catches token truncation (`finish_reason == "length"`), and implements `SHA-256` idempotent webhook routing. |
