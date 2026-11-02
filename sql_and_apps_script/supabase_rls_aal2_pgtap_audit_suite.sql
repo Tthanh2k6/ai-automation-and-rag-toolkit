@@ -1,5 +1,5 @@
 -- =============================================================================
--- SampleCo Health (MIP) — PR #146 Independent RLS & pgTAP Verification Template
+-- Clinical Multi-Tenant App — Independent RLS & pgTAP Verification Template
 -- Offline / Static Audit Reference (Zero External AI Upload • Synthetic Only)
 -- =============================================================================
 

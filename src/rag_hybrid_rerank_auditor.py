@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Client D — Production RAG Pipeline Diagnostic & Retrieval Optimization Suite
-=========================================================================
+Production RAG Pipeline Diagnostic & Retrieval Optimization Suite
+=================================================================
 Audits the 4 critical stages of an existing Python RAG pipeline:
 1. Ingestion & Chunking Audit: Detects mid-sentence/table boundary splits and missing parent headers.
 2. Embedding & Index Hygiene: Checks dimensional consistency, normalization, and metadata filter coverage.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SampleShop — Focused AI Automation Feature PoC (FastAPI + OpenAI Structured Output + Lightweight RAG + React UI)
+Focused AI Automation Feature PoC (FastAPI + OpenAI Structured Output + Lightweight RAG + React UI)
 =============================================================================================================
 Scope covered in this single drop-in module:
 1. Reference Document Grounding (RAG): Lightweight chunking + OpenAI Embeddings cosine similarity retrieval
@@ -21,7 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from openai import OpenAI, APITimeoutError, RateLimitError, APIError
 
-app = FastAPI(title="SampleShop AI Automation & Grounded RAG Endpoint", version="1.0.0")
+app = FastAPI(title="AI Automation & Grounded RAG Endpoint", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,

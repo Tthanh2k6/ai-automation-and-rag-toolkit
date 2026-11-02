@@ -72,9 +72,9 @@ def collect_micro_batch(ingestors: List[BoundedCameraIngestor], max_batch: int =
 
 
 if __name__ == "__main__":
-    cam1 = BoundedCameraIngestor("sample_user_01", maxlen=2)
+    cam1 = BoundedCameraIngestor("cam_site_a_01", maxlen=2)
     registry = AtomicModelRegistry("v1_onnx_fp16")
     for seq in range(1, 6):
-        cam1.push_frame(FramePacket("sample_user_01", seq, time.time()))
+        cam1.push_frame(FramePacket("cam_site_a_01", seq, time.time()))
     batch = collect_micro_batch([cam1])
     print(f"Active Model: {registry.get_active_version()} | Freshest seq={batch[0].frame_seq} | Dropped stale={cam1.dropped_frames}")

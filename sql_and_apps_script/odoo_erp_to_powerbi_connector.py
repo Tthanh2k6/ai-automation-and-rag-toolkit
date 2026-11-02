@@ -1,6 +1,6 @@
 """
-Client C - Odoo ERP to Power BI Inventory Connector and Power Query M Generator
-Covers both integration methods requested in the scope:
+Odoo ERP to Power BI Inventory Connector and Power Query M Generator
+Covers both common integration methods:
   1. Direct PostgreSQL Read-Replica SQL Views (Fastest for Power BI Scheduled Refresh)
   2. Power Query M (Odoo JSON-RPC / REST API using Web.Contents RelativePath for Power BI Service)
 """
@@ -92,4 +92,4 @@ in
 """
 
 if __name__ == "__main__":
-    print("Odoo -> Power BI SQL Views and Power Query M Script ready for Client C.")
+    print("Odoo -> Power BI SQL Views and Power Query M Script ready.")

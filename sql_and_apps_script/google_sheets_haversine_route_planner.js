@@ -1,14 +1,14 @@
 /**
  * ============================================================================
- * Client A — Sample City PROPERTY LEADS SMART ROUTE PLANNER (GOOGLE APPS SCRIPT)
+ * PROPERTY LEADS SMART ROUTE PLANNER (GOOGLE APPS SCRIPT)
  * ============================================================================
- * Built specifically for Client A's 104-row Sample City sheet structure:
- * - Col A (Idx 0): Lead Status (Filters OUT "Under Contract" [5] & "Taken care of" [8];
- *                  prioritizes "Hot" [20], "JEWEL" [1], "For Verification" [2],
- *                  "Client B's working on it" [12], "New" [4], and "In Progress" [48]).
+ * Reference implementation for a field-service / real-estate lead sheet laid out as:
+ * - Col A (Idx 0): Lead Status (Filters OUT "Under Contract" & "Taken care of";
+ *                  prioritizes "JEWEL", "Hot", "For Verification", "New",
+ *                  "Working on it", and "In Progress").
  * - Col B (Idx 1): Owner Name
  * - Col C (Idx 2): Phone
- * - Col F (Idx 5): Property Address (Jackson, Clay, Johnson, Wyandotte, Platte)
+ * - Col F (Idx 5): Property Address
  * - Col G (Idx 6): Contacted?
  * - Col H (Idx 7): County
  * - Col K (Idx 10): Occupied or Vacant
@@ -21,6 +21,7 @@ const CONFIG = {
   LEADS_SHEET_NAME: "Sheet1",
   PLANNER_SHEET_NAME: "Route_Planner_Dashboard",
   PRINT_SHEET_NAME: "Printable_Route_Sheet",
+  DEFAULT_START_LOCATION: "", // Optional fallback when Planner!B2 is empty, e.g. "123 Main St, Anytown"
   MINUTES_PER_STOP: 12, // Configurable dwell time at each property
   MAX_WAYPOINTS: 23,    // Google Maps Directions API waypoint ceiling per leg
   SKIP_STATUSES: ["under contract", "taken care of", "visited", "dead"],
@@ -30,7 +31,7 @@ const CONFIG = {
     "for verification": 80,
     "scheduled appt": 75,
     "new": 70,
-    "Client B's working on it": 60,
+    "working on it": 60,
     "in progress": 50,
     "bid at auction": 40
   }
@@ -41,7 +42,7 @@ const CONFIG = {
  */
 function onOpen() {
   SpreadsheetApp.getUi()
-    .createMenu("🚗 KC Smart Route Planner")
+    .createMenu("🚗 Smart Route Planner")
     .addItem("1. Setup Route Planner Inputs", "setupPlannerTabs")
     .addItem("2. Build Optimized Driving Route", "generateSmartPropertyRoute")
     .addItem("3. Mark Completed Stops as Visited", "markCheckedStopsVisited")
@@ -49,7 +50,7 @@ function onOpen() {
 }
 
 /**
- * Main Engine: Reads Start/End/Available Hours, scores unvisited KC leads,
+ * Main Engine: Reads Start/End/Available Hours, scores unvisited leads,
  * packs the highest-value cluster within the time budget, calls native
  * Maps.newDirectionFinder() with optimizeWaypoints(true), and builds the
  * Printable Route Sheet + clickable Google Maps navigation link.
@@ -61,7 +62,13 @@ function generateSmartPropertyRoute() {
   const printSheet = ss.getSheetByName(CONFIG.PRINT_SHEET_NAME) || ss.insertSheet(CONFIG.PRINT_SHEET_NAME);
 
   // 1. Read user inputs from Planner Dashboard
-  const startLocation = String(plannerSheet.getRange("B2").getValue() || "Downtown Sample City, MO").trim();
+  const startLocation = String(plannerSheet.getRange("B2").getValue() || CONFIG.DEFAULT_START_LOCATION).trim();
+  if (!startLocation) {
+    SpreadsheetApp.getUi().alert(
+      "Enter a start location in " + CONFIG.PLANNER_SHEET_NAME + "!B2 (or set CONFIG.DEFAULT_START_LOCATION)."
+    );
+    return;
+  }
   const endLocation = String(plannerSheet.getRange("B3").getValue() || startLocation).trim();
   const availableHours = parseFloat(plannerSheet.getRange("B4").getValue() || 2.0);
   const dwellMinutes = parseFloat(plannerSheet.getRange("B5").getValue() || CONFIG.MINUTES_PER_STOP);
@@ -70,7 +77,7 @@ function generateSmartPropertyRoute() {
   const totalBudgetSeconds = Math.max(30, availableHours * 60) * 60;
   const dwellSecondsPerStop = dwellMinutes * 60;
 
-  // 2. Load all 104+ rows from Client A's main property sheet
+  // 2. Load all rows from the main property leads sheet
   const data = leadsSheet.getDataRange().getValues();
   const candidates = [];
 
