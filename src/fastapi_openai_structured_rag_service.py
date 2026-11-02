@@ -6,10 +6,15 @@ Focused AI Automation Feature PoC (FastAPI + OpenAI Structured Output + Lightwei
 Scope covered in this single drop-in module:
 1. Reference Document Grounding (RAG): Lightweight chunking + OpenAI Embeddings cosine similarity retrieval
    (zero heavy vector DB dependency required for small reference doc sets).
-2. OpenAI API Workflow: Strict JSON Schema Structured Outputs (`response_format`) with automatic retry/backoff
-   for `RateLimitError` (429) and `APITimeoutError`.
+2. OpenAI API Workflow: Structured Outputs (`client.beta.chat.completions.parse` with a Pydantic
+   model, which OpenAI sends as a strict JSON schema), bounded retry for `RateLimitError` (429) and
+   `APITimeoutError`, and explicit handling of truncated output (`finish_reason == "length"`) and refusals.
 3. FastAPI Endpoint (`POST /api/ai-feature`): Pydantic request/response validation + clean HTTP error handling.
-4. Lightweight React UI Component (included in docstring below) ready to drop into your frontend.
+4. Lightweight React UI Component (in the REACT_UI_COMPONENT_JSX string below) to drop into a frontend.
+
+Install:   pip install -r requirements.txt   (fastapi, uvicorn, pydantic, openai>=1.40)
+Self-test: python src/fastapi_openai_structured_rag_service.py   (offline, no API key, no network)
+Serve:     OPENAI_API_KEY=... uvicorn fastapi_openai_structured_rag_service:app --app-dir src
 """
 
 import os
@@ -19,7 +24,7 @@ from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from openai import OpenAI, APITimeoutError, RateLimitError, APIError
+from openai import OpenAI, APITimeoutError, RateLimitError, APIError, LengthFinishReasonError
 
 app = FastAPI(title="AI Automation & Grounded RAG Endpoint", version="1.0.0")
 
@@ -147,7 +152,10 @@ def process_ai_automation(payload: UserFeatureRequest) -> FeatureAPIResponse:
                 response_format=StructuredAIOutput,
                 temperature=0.2,
             )
-            parsed_result: StructuredAIOutput = completion.choices[0].message.parsed
+            message = completion.choices[0].message
+            if message.refusal:
+                raise HTTPException(status_code=422, detail=f"Model refused the request: {message.refusal}")
+            parsed_result: StructuredAIOutput = message.parsed
             elapsed_ms = int((time.time() - start_ts) * 1000)
             return FeatureAPIResponse(
                 status="ok",
@@ -155,6 +163,9 @@ def process_ai_automation(payload: UserFeatureRequest) -> FeatureAPIResponse:
                 retrieved_chunks=matched_chunks,
                 result=parsed_result,
             )
+        except LengthFinishReasonError:
+            # finish_reason == "length": the JSON was cut off at the token limit, do not try to parse it
+            raise HTTPException(status_code=502, detail="LLM output was truncated (finish_reason=length).")
         except (RateLimitError, APITimeoutError) as retry_err:
             last_error = retry_err
             time.sleep(0.8 * (attempt + 1))
@@ -245,3 +256,30 @@ export default function AIAutomationFeatureCard() {
   );
 }
 """
+
+
+# ---------------------------------------------------------------------------
+# 5. OFFLINE SELF-TEST (no API key, no network)
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    import json
+
+    assert abs(_cosine_similarity([1.0, 0.0], [1.0, 0.0]) - 1.0) < 1e-9
+    assert abs(_cosine_similarity([1.0, 0.0], [0.0, 1.0])) < 1e-9
+
+    sample = StructuredAIOutput(
+        summary_answer="Standard tier allows 60 requests per minute.",
+        recommended_actions=["Back off exponentially on HTTP 429"],
+        citations=["doc_api_limits"],
+        confidence_score=0.9,
+        grounded_in_docs=True,
+    )
+    FeatureAPIResponse(status="ok", latency_ms=0, retrieved_chunks=[], result=sample)
+    UserFeatureRequest(user_input="How many requests per minute?")
+
+    routes = sorted(getattr(r, "path", "") for r in app.routes)
+    assert "/api/ai-feature" in routes, routes
+    print("Self-test passed (offline). Routes:", [r for r in routes if r.startswith("/api")])
+    print("Response schema sent to OpenAI:")
+    print(json.dumps(StructuredAIOutput.model_json_schema(), indent=2))
+    print("To serve: OPENAI_API_KEY=... uvicorn fastapi_openai_structured_rag_service:app --app-dir src")

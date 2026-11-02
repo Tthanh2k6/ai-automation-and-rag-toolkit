@@ -1,10 +1,10 @@
 """
-Django Live Video AI Detection - Bounded Ring-Buffer, Micro-Batching and Bulk DB Writer PoC
-Demonstrates:
-  1. Non-blocking RTSP/Camera reader with deque(maxlen=2) backpressure frame-dropping
-  2. Micro-batching inference coordinator (batch_size=8 or max_wait_ms=25)
-  3. Zero-downtime atomic model version hot-swap and rollback
-  4. Batched PostgreSQL bulk_create writer + Redis FPS/Latency telemetry
+Live video AI detection: bounded ring buffer, micro-batching and model-version swap (PoC)
+Demonstrates, in pure Python with simulated frames (no camera, model, database or Redis):
+  1. Per-camera ring buffer (deque(maxlen=2)) that drops stale frames instead of queueing them
+  2. Micro-batch collection across cameras (up to 8 frames per batch)
+  3. Thread-safe swap/rollback of the active model version (a version string; no model loading)
+A real pipeline would add the camera reader threads, the inference call and a database writer.
 """
 import time
 import threading
@@ -40,7 +40,7 @@ class BoundedCameraIngestor:
 
 
 class AtomicModelRegistry:
-    """Allows hot-swapping and rollback of detection model versions with zero downtime."""
+    """Thread-safe swap and rollback of the active model version name."""
     def __init__(self, initial_version: str = "v1_yolov8_onnx"):
         self._active_version = initial_version
         self._previous_version = initial_version

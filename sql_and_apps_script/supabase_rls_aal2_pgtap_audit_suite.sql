@@ -60,13 +60,20 @@ REVOKE ALL ON FUNCTION public.is_assigned_clinician_aal2(uuid) FROM PUBLIC, anon
 GRANT EXECUTE ON FUNCTION public.is_assigned_clinician_aal2(uuid) TO authenticated;
 
 -- 3. NON-VACUOUS pgTAP REGRESSION TEST PATTERN (PREVENTING FALSE POSITIVES)
--- Why pgTAP suites often pass 150/150 while vulnerabilities remain:
---   (a) Running assertions before executing SET LOCAL ROLE authenticated (postgres has BYPASSRLS).
+-- Common reasons an RLS test suite passes while a hole remains:
+--   (a) Running assertions before SET LOCAL ROLE authenticated (postgres has BYPASSRLS).
 --   (b) Asserting 0 rows at AAL1 without first proving the synthetic fixture row exists at AAL2.
---   (c) Testing SELECT visibility but omitting UPDATE/DELETE/INSERT negative assertions.
+--   (c) Testing SELECT visibility but omitting UPDATE/DELETE/INSERT negative assertions
+--       (not included below; add them the same way for your own tables).
+--
+-- Fixtures this block expects (synthetic, inserted beforehand as postgres):
+--   * one public.laboratory_results row for some patient_id
+--   * one active public.clinician_patient_assignments row linking that patient_id
+--     to clinician 00000000-0000-0000-0000-00000000000a
+-- auth.uid() casts the JWT "sub" claim to uuid, so "sub" must be a valid UUID.
 
 BEGIN;
-SELECT plan(4);
+SELECT plan(2);
 
 -- Switch out of superuser into standard Supabase authenticated role
 SET LOCAL ROLE authenticated;
@@ -74,7 +81,7 @@ SET LOCAL ROLE authenticated;
 -- Case A: Clinician at AAL1 MUST be denied laboratory_results access (0 rows visible)
 SELECT set_config(
     'request.jwt.claims',
-    json_build_object('sub', 'clinician-uuid-A', 'role', 'authenticated', 'aal', 'aal1')::text,
+    json_build_object('sub', '00000000-0000-0000-0000-00000000000a', 'role', 'authenticated', 'aal', 'aal1')::text,
     true
 );
 SELECT is_empty(
@@ -85,7 +92,7 @@ SELECT is_empty(
 -- Case B: Same Clinician elevated to AAL2 MUST see assigned patient lab result (proves fixture is non-empty)
 SELECT set_config(
     'request.jwt.claims',
-    json_build_object('sub', 'clinician-uuid-A', 'role', 'authenticated', 'aal', 'aal2')::text,
+    json_build_object('sub', '00000000-0000-0000-0000-00000000000a', 'role', 'authenticated', 'aal', 'aal2')::text,
     true
 );
 SELECT results_eq(

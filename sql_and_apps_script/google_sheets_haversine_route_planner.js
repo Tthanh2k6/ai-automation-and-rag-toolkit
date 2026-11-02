@@ -15,6 +15,10 @@
  * - Col N (Idx 13): Equity
  * - Col O (Idx 14): Comment / Lead Notes
  * - Col P (Idx 15): Visited Status & Last Visited Timestamp (Auto-tracked)
+ *
+ * Stop order comes from the built-in Maps service (DirectionFinder with
+ * optimizeWaypoints), not from a local Haversine/TSP calculation; the file name
+ * is kept so existing links keep working. Not tested against a live sheet.
  */
 
 const CONFIG = {
@@ -24,6 +28,7 @@ const CONFIG = {
   DEFAULT_START_LOCATION: "", // Optional fallback when Planner!B2 is empty, e.g. "123 Main St, Anytown"
   MINUTES_PER_STOP: 12, // Configurable dwell time at each property
   MAX_WAYPOINTS: 23,    // Google Maps Directions API waypoint ceiling per leg
+  MAX_URL_WAYPOINTS: 9, // Google Maps URLs accept at most 9 waypoints (fewer on mobile browsers)
   SKIP_STATUSES: ["under contract", "taken care of", "visited", "dead"],
   PRIORITY_WEIGHTS: {
     "jewel": 100,
@@ -50,6 +55,60 @@ function onOpen() {
 }
 
 /**
+ * Creates (or returns) the planner tab with its input cells B2:B6.
+ */
+function setupPlannerTabs() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let planner = ss.getSheetByName(CONFIG.PLANNER_SHEET_NAME);
+  if (!planner) {
+    planner = ss.insertSheet(CONFIG.PLANNER_SHEET_NAME);
+    planner.getRange("A1:B6").setValues([
+      ["Route planner input", "Value"],
+      ["Start location", CONFIG.DEFAULT_START_LOCATION],
+      ["End location (blank = back to start)", ""],
+      ["Available hours", 2],
+      ["Minutes per stop", CONFIG.MINUTES_PER_STOP],
+      ["County filter (ALL or a county name)", "ALL"]
+    ]);
+    planner.setColumnWidth(1, 280);
+  }
+  if (!ss.getSheetByName(CONFIG.PRINT_SHEET_NAME)) {
+    ss.insertSheet(CONFIG.PRINT_SHEET_NAME);
+  }
+  return planner;
+}
+
+/**
+ * Copies ticked stops from the printable sheet back to the leads sheet:
+ * writes "Visited <timestamp>" into column P of each ticked lead row.
+ */
+function markCheckedStopsVisited() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const printSheet = ss.getSheetByName(CONFIG.PRINT_SHEET_NAME);
+  if (!printSheet || printSheet.getLastRow() < 2) {
+    SpreadsheetApp.getUi().alert("Build a route first (menu item 2).");
+    return;
+  }
+  const leadsSheet = getLeadsSheet_(ss);
+  const rows = printSheet.getRange(2, 1, printSheet.getLastRow() - 1, 11).getValues();
+  const stamp = "Visited " + Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), "yyyy-MM-dd HH:mm");
+  let marked = 0;
+  rows.forEach(row => {
+    const ticked = row[9] === true || String(row[9]).toUpperCase() === "TRUE";
+    const leadRow = parseInt(row[10], 10);
+    if (ticked && leadRow > 1) {
+      leadsSheet.getRange(leadRow, 16).setValue(stamp);
+      marked++;
+    }
+  });
+  SpreadsheetApp.getUi().alert(marked + " stop(s) marked as visited.");
+}
+
+function getLeadsSheet_(ss) {
+  return ss.getSheetByName(CONFIG.LEADS_SHEET_NAME) || ss.getSheets()[0];
+}
+
+/**
  * Main Engine: Reads Start/End/Available Hours, scores unvisited leads,
  * packs the highest-value cluster within the time budget, calls native
  * Maps.newDirectionFinder() with optimizeWaypoints(true), and builds the
@@ -57,7 +116,7 @@ function onOpen() {
  */
 function generateSmartPropertyRoute() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const leadsSheet = ss.getSheets()[0];
+  const leadsSheet = getLeadsSheet_(ss);
   const plannerSheet = ss.getSheetByName(CONFIG.PLANNER_SHEET_NAME) || setupPlannerTabs();
   const printSheet = ss.getSheetByName(CONFIG.PRINT_SHEET_NAME) || ss.insertSheet(CONFIG.PRINT_SHEET_NAME);
 
@@ -169,15 +228,17 @@ function generateSmartPropertyRoute() {
   // 6. Build Multi-Stop Google Maps Navigation Path (Opens directly in Google Maps App)
   const encodedOrigin = encodeURIComponent(startLocation);
   const encodedDest = encodeURIComponent(endLocation);
-  const encodedWaypoints = finalStops.map(s => encodeURIComponent(s.prop.address)).join("|");
-  const navUrl = "/maps/dir/?api=1&origin=" + encodedOrigin +
+  const urlStops = finalStops.slice(0, CONFIG.MAX_URL_WAYPOINTS);
+  const encodedWaypoints = urlStops.map(s => encodeURIComponent(s.prop.address)).join("|");
+  const navUrl = "https://www.google.com/maps/dir/?api=1&origin=" + encodedOrigin +
                  "&destination=" + encodedDest + "&travelmode=driving&waypoints=" + encodedWaypoints;
 
   // 7. Render Printable Route Sheet
   printSheet.clearContents();
-  printSheet.getRange("A1:J1").setValues([[
+  printSheet.getRange("A1:K1").setValues([[
     "Stop #", "Status", "Drive Mins", "Miles", "Property Address",
-    "Owner Name", "Phone Number", "County / Occupancy", "Equity / Lead Notes", "Visited? (Check)"
+    "Owner Name", "Phone Number", "County / Occupancy", "Equity / Lead Notes", "Visited? (Check)",
+    "Lead Row"
   ]]);
 
   const outputRows = finalStops.map(s => [
@@ -190,12 +251,20 @@ function generateSmartPropertyRoute() {
     s.prop.phone,
     s.prop.county + (s.prop.occupancy ? " / " + s.prop.occupancy : ""),
     (s.prop.equity ? "Eq: " + s.prop.equity + " | " : "") + s.prop.notes,
-    "FALSE"
+    false,
+    s.prop.sheetRow
   ]);
 
   if (outputRows.length > 0) {
-    printSheet.getRange(2, 1, outputRows.length, 10).setValues(outputRows);
+    printSheet.getRange(2, 1, outputRows.length, 11).setValues(outputRows);
+    printSheet.getRange(2, 10, outputRows.length, 1).insertCheckboxes();
   }
   printSheet.getRange(outputRows.length + 3, 1).setValue("CLICK TO OPEN TURN-BY-TURN GOOGLE MAPS ROUTE:");
   printSheet.getRange(outputRows.length + 3, 2).setValue(navUrl);
+  if (finalStops.length > urlStops.length) {
+    printSheet.getRange(outputRows.length + 4, 1).setValue(
+      "The link covers the first " + urlStops.length + " stops; Google Maps links allow at most " +
+      CONFIG.MAX_URL_WAYPOINTS + " waypoints."
+    );
+  }
 }
